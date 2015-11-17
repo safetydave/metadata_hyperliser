@@ -1,3 +1,19 @@
+import de.fhpotsdam.unfolding.mapdisplay.*;
+import de.fhpotsdam.unfolding.utils.*;
+import de.fhpotsdam.unfolding.marker.*;
+import de.fhpotsdam.unfolding.tiles.*;
+import de.fhpotsdam.unfolding.interactions.*;
+import de.fhpotsdam.unfolding.ui.*;
+import de.fhpotsdam.unfolding.*;
+import de.fhpotsdam.unfolding.core.*;
+import de.fhpotsdam.unfolding.mapdisplay.shaders.*;
+import de.fhpotsdam.unfolding.data.*;
+import de.fhpotsdam.unfolding.geo.*;
+import de.fhpotsdam.unfolding.texture.*;
+import de.fhpotsdam.unfolding.events.*;
+import de.fhpotsdam.utils.*;
+import de.fhpotsdam.unfolding.providers.*;
+
 import java.io.*;
 import java.text.*;
 import java.util.*;
@@ -9,16 +25,6 @@ MdParser mc2p;
 // Timing
 long g_time = -1;
 long step = 3600000 * 3;
-
-// Spatial bounds
-// Determined by map image background
-// TODO get from data in parse
-// TODO make dynamic based on current calls
-// TODO use http://unfoldingmaps.org/
-float latT = -32.5;
-float latB = -43.5;
-float lngL = 141;
-float lngR = 155.5;
 
 int millisPrev;
 // Controls
@@ -33,7 +39,7 @@ int hudMode = 1;
 long commLinger = 86400000 * 3; // 3 days
 float charScale = 1;
 
-PImage map;
+PImage mapImg;
 
 // Handy for display
 String helpText =
@@ -49,6 +55,8 @@ String helpText =
   "esc - exit";
 DecimalFormat df1 = new DecimalFormat("0.0");
 DecimalFormat df3 = new DecimalFormat("0.000");
+
+UnfoldingMap map;
 
 void setup() {
   size(640, 640);
@@ -67,7 +75,12 @@ void setup() {
   mc2p.finishParse();
   parsed = true;
   
-  map = loadImage("staticmap.png");
+  map = new UnfoldingMap(this, new Google.GoogleTerrainProvider());
+  map.setTweening(true);
+  List<Location> locs = new ArrayList<Location>();
+  locs.add(new Location(-32.5, 141));
+  locs.add(new Location(-43.5, 155));
+  map.zoomAndPanToFit(locs);
   
   //doPauseResume();
 }
@@ -78,8 +91,12 @@ void draw() {
     return;
   }
   background(0);
-  tint(255, 128);
-  image(map, 0, 0, width, height);
+  
+  noStroke();
+  map.draw();
+  fill(0, 128);
+  rect(0, 0, width, height);
+  
   as.updateAndDraw(g_time);
   int tDiff = millis() - millisPrev;
   float fps = (1000.0 / tDiff);
@@ -260,11 +277,11 @@ void drawHelp() {
 }
 
 class ActiveSet {
-  Set<Comm> Comms;
+  Set<Comm> comms;
   ArrivalExitManager mgr;
   
   ActiveSet(ArrivalExitManager mgr) {
-    Comms = new HashSet<Comm>();
+    comms = new HashSet<Comm>();
     this.mgr = mgr;
   }
   
@@ -272,16 +289,16 @@ class ActiveSet {
     return mgr;
   }
   
-  void addActive(Comm Comm) {
-    Comms.add(Comm);
+  void addActive(Comm comm) {
+    comms.add(comm);
   }
   
   Set<Comm> getComms() {
-    return Comms;
+    return comms;
   }
   
   int size() {
-    return Comms.size();
+    return comms.size();
   }
   
   void updateAndDraw(long time) {
@@ -291,7 +308,7 @@ class ActiveSet {
     else {
       mgr.popArrivals(this, time);
     } 
-    Iterator<Comm> it = Comms.iterator();
+    Iterator<Comm> it = comms.iterator();
     while (it.hasNext()) {
       Comm c = it.next();
       if (backwards) {
@@ -429,6 +446,7 @@ class Comm implements Comparable<Comm> {
   String towerLoc;
   float towerLat;
   float towerLng;
+  Location mapLoc;
   
   // Derived
   color c0, c1;
@@ -448,6 +466,7 @@ class Comm implements Comparable<Comm> {
     this.towerLoc = towerLoc;
     this.towerLat = lat;
     this.towerLng = lng;
+    mapLoc = new Location(towerLat, towerLng);
     
     if (type.equals("Phone")) {
       c0 = color(255, 209, 13, 128);
@@ -487,15 +506,15 @@ class Comm implements Comparable<Comm> {
   // This draws the Comm
   // given the state, progress & transitions calculated by update
   void draw() {
-    float x = (towerLng - lngL) / (lngR - lngL) * width;
-    float y = (towerLat - latT) / (latB - latT) * height;
+    ScreenPosition screen = map.getScreenPosition(mapLoc);
     
     color col = lerpColor(c0, c1, progress);
     noFill();
     strokeWeight(thick);
     stroke(col);
     
-    ellipse(x, y, 10 + rad * progress, 10 + rad * progress);
+    ellipse(screen.x, screen.y,
+      10 + rad * progress, 10 + rad * progress);
   }    
     
 
